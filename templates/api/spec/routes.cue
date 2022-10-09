@@ -11,6 +11,6 @@ paths: "/": get: {
 	operationId: "WelcomeGet"
 	responses: "200": {
 		description: "Successful Response"
-		content: "text/plain": schema: {}
+		content: "application/json": schema: $ref: "#/components/schemas/Welcome"
 	}
 }

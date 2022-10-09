@@ -2,6 +2,7 @@ An opinionated REST API layout for Go.
 
 
 - oapi-codegen - Follows design first principles.
+- Defines OpenAPI spec in CUE
 - Echo - High performance, extensible, minimalist Go web framework.
 - Tilt - A toolkit for fixing the pains of microservice development.
 

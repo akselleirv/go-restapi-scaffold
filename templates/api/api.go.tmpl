@@ -3,6 +3,7 @@ package api
 import (
 	"net/http"
 
+    "github.com/akselleirv/costs-service/api/models"
 	"github.com/labstack/echo/v4"
 )
 
@@ -13,5 +14,5 @@ func New{{ .ServiceName | ToCamel }}() *Server {
 }
 
 func (s *Server) WelcomeGet(c echo.Context) error {
-	return c.String(http.StatusOK, "Hello from {{ .ServiceName }}!")
+	return c.JSON(http.StatusOK, models.Welcome{Message: "hello from {{ .ServiceName }}"})
 }
