@@ -33,8 +33,24 @@ func main() {
 	apiRouter.Use(oapiCodegenMiddleware.OapiRequestValidator(swagger))
 
 	api.RegisterHandlers(apiRouter, service)
+	startServer(e)
+}
+
+func startServer(e *echo.Echo) {
 	e.HideBanner = true
-	e.Logger.Fatal(e.Start(":8080"))
+	go func() {
+		if err := e.Start(":8080"); err != nil && err != http.ErrServerClosed {
+			e.Logger.Fatal("shutting down the server")
+		}
+	}()
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, os.Interrupt)
+	<-quit
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := e.Shutdown(ctx); err != nil {
+		e.Logger.Fatal(err)
+	}
 }
 
 // setupMetrics starts a metrics server on :9090
