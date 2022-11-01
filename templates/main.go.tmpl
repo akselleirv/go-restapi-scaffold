@@ -3,6 +3,10 @@ package main
 import (
 	"log"
 	"os"
+    "context"
+    "errors"
+    "go.uber.org/zap"
+    "go.uber.org/zap/zapcore"
 
 	"{{ .ModuleName }}/api"
 	oapiCodegenMiddleware "github.com/deepmap/oapi-codegen/pkg/middleware"
@@ -13,6 +17,8 @@ import (
 )
 
 func main() {
+    l, sync := newLogger()
+    defer sync()
 	swagger, err := api.GetSwagger()
 	if err != nil {
 		log.Fatalln("error loading swagger spec: ", err.Error())
@@ -30,7 +36,10 @@ func main() {
 	// If the apiRouter is not created, then the OpenAPI request validator will
 	// block any requests which are not mentioned in the spec.
 	apiRouter := e.Group("")
-	apiRouter.Use(oapiCodegenMiddleware.OapiRequestValidator(swagger))
+	apiRouter.Use(
+	    oapiCodegenMiddleware.OapiRequestValidator(swagger),
+	    newLoggerMiddleware(l.Desugar()),
+	)
 
 	api.RegisterHandlers(apiRouter, service)
 	startServer(e)
@@ -80,6 +89,57 @@ func healthProbes(e *echo.Echo) {
 	e.GET("/live", func(c echo.Context) error {
 		health.LiveEndpoint(c.Response().Writer, c.Request())
 		return nil
+	})
+}
+
+func newLogger() (*zap.SugaredLogger, func()) {
+	cfg := zap.NewProductionConfig()
+	cfg.EncoderConfig.CallerKey = zapcore.OmitKey
+	cfg.EncoderConfig.EncodeTime = zapcore.RFC3339TimeEncoder
+	l, err := cfg.Build()
+	if err != nil {
+		log.Fatalln("failed creating logger: ", err.Error())
+	}
+
+	return l.Sugar(), func() {
+		err = l.Sync()
+		if err != nil {
+			log.Fatalln(err)
+		}
+	}
+}
+
+func newLoggerMiddleware(l *zap.Logger) echo.MiddlewareFunc {
+	addErrorIfNotNil := func(err error) (zap.Field, bool) {
+		if err != nil {
+			var echoErr *echo.HTTPError
+			if errors.As(err, &echoErr) {
+				return zap.String("error", echoErr.Message.(string)), true
+			}
+			return zap.String("error", err.Error()), true
+		}
+		return zap.Field{}, false
+	}
+	addErrorIfNotNil(nil)
+	return echoMiddleware.RequestLoggerWithConfig(echoMiddleware.RequestLoggerConfig{
+		LogMethod:    true,
+		LogRoutePath: true,
+		LogStatus:    true,
+		LogLatency:   true,
+		LogError:     true,
+		LogValuesFunc: func(c echo.Context, v echoMiddleware.RequestLoggerValues) error {
+			fields := []zap.Field{
+				zap.String("method", v.Method),
+				zap.String("path", v.RoutePath),
+				zap.Int("status", v.Status),
+				zap.String("latency", v.Latency.String()),
+			}
+			if f, ok := addErrorIfNotNil(v.Error); ok {
+				fields = append(fields, f)
+			}
+			l.Info("request", fields...)
+			return nil
+		},
 	})
 }
 
